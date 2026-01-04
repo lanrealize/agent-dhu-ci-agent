@@ -7,10 +7,15 @@ from src.api.routes import analysis, chat, chat_stream, health
 from src.config import settings
 from src.models.mongodb import MongoDBManager
 from src.utils.logger import get_logger, setup_logging
+from src.utils.langchain_patch import apply_reasoning_patch
 
 # 初始化日志
 setup_logging()
 logger = get_logger(__name__)
+
+# 🔥 应用 LangChain reasoning content 补丁
+# 此补丁使 LangChain 能够在流式输出中包含 reasoning_content 字段
+apply_reasoning_patch()
 
 # 创建 FastAPI 应用
 app = FastAPI(

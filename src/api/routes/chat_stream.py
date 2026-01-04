@@ -32,7 +32,32 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         self.queue.put({"type": "thinking", "content": "正在思考..."})
 
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
-        """LLM 生成新 token - 🔥 关键：实现逐字显示"""
+        """LLM 生成新 token - 实现逐字显示
+
+        🔥 支持 reasoning_content：
+        - 如果 chunk 中包含 reasoning_content，发送 reasoning_token 事件
+        - 如果包含 content，发送普通 token 事件
+        """
+        # 获取 chunk 对象
+        chunk = kwargs.get('chunk')
+
+        # 🔥 检查是否有 reasoning content
+        if chunk:
+            # chunk 是 ChatGenerationChunk，message 是 AIMessageChunk
+            if hasattr(chunk, 'message'):
+                msg = chunk.message
+                # 检查 additional_kwargs 中的 reasoning_content
+                if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs:
+                    reasoning = msg.additional_kwargs.get('reasoning_content')
+                    if reasoning:
+                        # 发送 reasoning token 事件
+                        self.queue.put({
+                            "type": "reasoning_token",
+                            "content": reasoning
+                        })
+                        return  # reasoning token 不需要再发送普通 token
+
+        # 发送普通 content token
         self.queue.put({
             "type": "token",
             "content": token
