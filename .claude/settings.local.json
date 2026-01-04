@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "Bash(dir /B \"D:\\\\Codes\\\\Agents\\\\InitialProject\\\\.venv\\\\Lib\\\\site-packages\\\\langchain\\\\agents\")",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(.venv/Scripts/python.exe test_stream.py)",
+      "Bash(timeout 120 curl:*)",
+      "Bash(timeout 60 curl:*)",
+      "Bash(.venv/Scripts/python.exe test_stream_pretty.py)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(curl.exe:*)",
+      "Bash(timeout 60 curl.exe:*)",
+      "Bash(powershell -Command \"Measure-Command { curl.exe -N -s -X POST http://127.0.0.1:8006/api/v1/chat/stream -H ''Content-Type: application/json'' -d ''@test_hello.json'' | Out-Null } | Select-Object -ExpandProperty TotalSeconds\")",
+      "Bash(findstr:*)",
+      "Bash(powershell -Command \"$start = Get-Date; curl.exe -N -s -X POST http://127.0.0.1:8007/api/v1/chat/stream -H ''Content-Type: application/json'' -d ''@test_hello.json'' | Out-Null; $end = Get-Date; \\($end - $start\\).TotalSeconds\")",
+      "Bash(dir:*)",
+      "Bash(.venv/Scripts/pip.exe:*)",
+      "Bash(ls:*)",
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

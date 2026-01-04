@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # DevOps Agent API 服务
+  devops-agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: devops-agent
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM 配置
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
+
+      # 数据库配置 (使用 SQLite)
+      - DATABASE_URL=sqlite:////app/data/devops_agent.db
+
+      # API 配置
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_RELOAD=false
+
+      # 日志配置
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+
+      # 外部服务配置 (根据实际情况修改)
+      - JENKINS_URL=${JENKINS_URL:-http://mock-jenkins:8080}
+      - JENKINS_USER=${JENKINS_USER:-admin}
+      - JENKINS_TOKEN=${JENKINS_TOKEN:-mock_token}
+
+      - GERRIT_URL=${GERRIT_URL:-http://mock-gerrit:8080}
+      - GERRIT_USER=${GERRIT_USER:-admin}
+      - GERRIT_PASSWORD=${GERRIT_PASSWORD:-mock_password}
+
+      - ARTIFACTORY_URL=${ARTIFACTORY_URL:-http://mock-artifactory:8081}
+      - ARTIFACTORY_API_KEY=${ARTIFACTORY_API_KEY:-mock_api_key}
+
+      - CUSTOM_BACKEND_URL=${CUSTOM_BACKEND_URL:-http://mock-backend:3000}
+      - CUSTOM_BACKEND_API_KEY=${CUSTOM_BACKEND_API_KEY:-mock_api_key}
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 可选: PostgreSQL 数据库 (如果需要使用 PostgreSQL 而不是 SQLite)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: devops-agent-db
+  #   environment:
+  #     - POSTGRES_DB=devops_agent
+  #     - POSTGRES_USER=devops
+  #     - POSTGRES_PASSWORD=devops_password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   restart: unless-stopped
+
+volumes:
+  data:
+    driver: local
+  # postgres_data:
+  #   driver: local
