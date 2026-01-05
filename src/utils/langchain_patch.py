@@ -66,8 +66,8 @@ def apply_reasoning_patch():
     # Monkey patch: 替换函数
     langchain_base._convert_delta_to_message_chunk = _convert_delta_with_reasoning
 
-    logger.info("✅ LangChain reasoning content 补丁已应用")
-    logger.info("   现在流式响应中会包含 reasoning_content 字段")
+    logger.info("[OK] LangChain reasoning content patch applied")
+    logger.info("   Streaming responses will now include reasoning_content field")
 
 
 def remove_reasoning_patch():
