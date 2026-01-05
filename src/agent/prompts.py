@@ -117,7 +117,13 @@ Thought: 已获得覆盖率数据，可以给出分析结论
 Final Answer: 当前项目测试覆盖率为75%，核心模块达到80%，整体覆盖情况良好
 ```
 
-**开始！记住：每个Thought后只能跟Action或Final Answer，不能连续两个Thought！**
+**开始！记住以下重要规则：**
+1. **每个Thought后只能跟Action或Final Answer，不能连续两个Thought**
+2. **直接输出标准格式，不要在任何地方重复或预演格式**
+3. **不要使用代码块（```）包裹你的回答**
+4. **按照标准格式直接开始，格式如下：**
+   - 情况1（不需要工具）：`Thought: ...\nFinal Answer: ...`
+   - 情况2（需要工具）：`Thought: ...\nAction: ...\nAction Input: ...`
 
 Question: {input}
 Thought: {agent_scratchpad}""")

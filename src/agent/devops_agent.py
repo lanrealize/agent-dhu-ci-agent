@@ -62,13 +62,13 @@ class DevOpsAgent:
         logger.info("DevOps Agent 初始化完成")
 
     def create_executor(
-        self, session_id: Optional[str] = None, max_iterations: int = 10
+        self, session_id: Optional[str] = None, max_iterations: int = 3
     ) -> tuple[AgentExecutor, str, MongoDBConversationMemory]:
         """创建 Agent 执行器
 
         Args:
             session_id: 会话 ID，如果为 None 则生成新的
-            max_iterations: 最大迭代次数
+            max_iterations: 最大迭代次数（默认 3 次，避免无限循环）
 
         Returns:
             tuple: (执行器, 会话ID, 记忆对象)
