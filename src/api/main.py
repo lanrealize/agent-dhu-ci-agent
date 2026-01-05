@@ -45,18 +45,19 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     try:
         body = await request.body()
         logger.error("=" * 80)
-        logger.error(f"❌ 422 验证错误 - {request.method} {request.url.path}")
+        logger.error(f"[422 ERROR] {request.method} {request.url.path}")
         logger.error(f"Content-Type: {request.headers.get('content-type')}")
-        logger.error(f"原始请求体: {body.decode('utf-8')}")
+        logger.error(f"Request body: {body.decode('utf-8') if body else '(empty)'}")
         logger.error("-" * 80)
-        logger.error(f"验证错误详情:")
+        logger.error(f"Validation errors:")
         for error in exc.errors():
-            logger.error(f"  - 字段: {error.get('loc')}")
-            logger.error(f"    错误: {error.get('msg')}")
-            logger.error(f"    类型: {error.get('type')}")
+            logger.error(f"  Field: {error.get('loc')}")
+            logger.error(f"  Message: {error.get('msg')}")
+            logger.error(f"  Type: {error.get('type')}")
+            logger.error(f"  Input: {error.get('input')}")
         logger.error("=" * 80)
     except Exception as e:
-        logger.error(f"打印验证错误日志时出错: {str(e)}")
+        logger.error(f"Error logging validation error: {str(e)}")
 
     # 返回标准的 422 错误响应
     return JSONResponse(

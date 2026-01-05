@@ -259,10 +259,10 @@ async def agent_run(request: AGUIRunAgentInput):
     """
     # 🔥 打印成功解析的请求数据
     logger.info("=" * 80)
-    logger.info("✅ /agent/run 请求解析成功")
+    logger.info("[SUCCESS] /agent/run request parsed")
     logger.info(f"  threadId: {request.threadId}")
     logger.info(f"  runId: {request.runId}")
-    logger.info(f"  messages 数量: {len(request.messages)}")
+    logger.info(f"  messages count: {len(request.messages)}")
     for i, msg in enumerate(request.messages):
         logger.info(f"    [{i}] role={msg.role}, content={msg.content[:50]}...")
     logger.info("=" * 80)
