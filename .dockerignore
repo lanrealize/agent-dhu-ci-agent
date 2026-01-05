@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Environment files (应该通过环境变量或 secrets 注入)
+.env
+.env.local
+
+# Test files
+test_*.py
+test_*.json
+test_*.txt
+*_test.py
+tests/
+
+# Logs
+*.log
+logs/
+
+# Documentation
+docs/
+README.md
+*.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Database
+*.db
+*.sqlite
+
+# Temporary
+*.tmp
+nul
+reasoning_debug.txt
+thought_analysis.txt
+
+# Docker
+docker/
+Dockerfile*
+docker-compose*.yml
+.dockerignore
