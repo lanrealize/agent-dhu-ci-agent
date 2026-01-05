@@ -61,14 +61,41 @@ class DevOpsAgent:
 
         logger.info("DevOps Agent 初始化完成")
 
+    def _handle_parsing_error(self, error: Exception) -> str:
+        """自定义格式错误处理器
+
+        当模型输出格式不正确时（公司 Higress 网关的 think 模型问题），
+        尝试从错误信息中提取有用内容，避免无意义的重试。
+
+        Args:
+            error: 解析错误异常
+
+        Returns:
+            str: 如果是格式错误，返回提示信息触发 max_iterations 限制
+        """
+        error_msg = str(error)
+        logger.warning(f"检测到输出格式错误: {error_msg}")
+
+        # 🔥 关键：返回一个会触发 max_iterations 的响应
+        # 通过返回 "FINAL_ANSWER:" 开头的字符串，告诉 Agent 停止重试
+        if "Missing 'Action:' after 'Thought:'" in error_msg:
+            # 这是最常见的格式错误，说明模型想要直接回答
+            # 返回一个信号，让 Agent 在下一次迭代时给出最终答案
+            return (
+                "格式提示：请直接使用 'Final Answer:' 给出回答，不需要使用工具。"
+            )
+
+        # 其他格式错误
+        return f"格式错误: {error_msg}. 请使用标准格式重新回答。"
+
     def create_executor(
-        self, session_id: Optional[str] = None, max_iterations: int = 3
+        self, session_id: Optional[str] = None, max_iterations: int = 5
     ) -> tuple[AgentExecutor, str, MongoDBConversationMemory]:
         """创建 Agent 执行器
 
         Args:
             session_id: 会话 ID，如果为 None 则生成新的
-            max_iterations: 最大迭代次数（默认 3 次，避免无限循环）
+            max_iterations: 最大迭代次数（默认 5 次，平衡工具调用和错误重试）
 
         Returns:
             tuple: (执行器, 会话ID, 记忆对象)
@@ -80,13 +107,13 @@ class DevOpsAgent:
         # 创建 MongoDB 持久化记忆
         memory = MongoDBConversationMemory(session_id=session_id)
 
-        # 创建执行器（不使用 memory 参数，因为与 ReAct agent 不兼容）
+        # 创建执行器（使用自定义错误处理器）
         executor = AgentExecutor(
             agent=self.agent,
             tools=self.tools,
             verbose=True,
             max_iterations=max_iterations,
-            handle_parsing_errors=True,
+            handle_parsing_errors=self._handle_parsing_error,  # 使用自定义错误处理
         )
 
         logger.info(f"创建 Agent 执行器，会话 ID: {session_id}")
