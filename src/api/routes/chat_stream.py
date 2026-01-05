@@ -13,6 +13,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 from src.agent.devops_agent import DevOpsAgent
 from src.models.schemas import ChatRequest
 from src.utils.logger import get_logger
+from src.utils.agui_adapter import AGUIAdapter
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["对话"])
@@ -97,12 +98,17 @@ class StreamingCallbackHandler(BaseCallbackHandler):
 
 
 async def stream_with_callback(agent: DevOpsAgent, message: str, session_id: str) -> AsyncGenerator[str, None]:
-    """使用回调的流式返回"""
+    """使用回调的流式返回（AG-UI 协议）"""
     queue = Queue()
 
     try:
-        # 发送开始事件
-        yield f"data: {json.dumps({'type': 'start', 'session_id': session_id or 'new'}, ensure_ascii=False)}\n\n"
+        # 创建 AG-UI 适配器
+        adapter = AGUIAdapter(session_id=session_id)
+
+        # 发送会话开始事件
+        start_events = adapter.convert_event({"type": "start", "session_id": session_id or "new"})
+        for event in start_events:
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
         # 创建回调处理器
         callback = StreamingCallbackHandler(queue)
@@ -145,29 +151,49 @@ async def stream_with_callback(agent: DevOpsAgent, message: str, session_id: str
                 if event is None:  # 结束标记
                     return
 
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                # 🔥 通过 AG-UI 适配器转换事件
+                agui_events = adapter.convert_event(event)
+
+                # 发送转换后的事件（可能是多个）
+                for agui_event in agui_events:
+                    yield f"data: {json.dumps(agui_event, ensure_ascii=False)}\n\n"
 
     except Exception as e:
         logger.error(f"流式响应错误: {str(e)}")
-        yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
+        # 发送错误事件
+        error_events = adapter.convert_event({"type": "error", "error": str(e)})
+        for event in error_events:
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
-    """流式对话接口（基于 Callbacks）
+    """流式对话接口（AG-UI 协议）
 
-    返回 Server-Sent Events (SSE) 流，实时显示 Agent 执行过程。
+    符合 AG-UI 协议标准的流式 SSE 接口，支持 TDesign Chat 组件直接集成。
 
-    事件类型：
-    - start: 开始处理，包含 session_id
-    - thinking: Agent 思考中
-    - action: Agent 决定采取的行动
-    - tool_start: 开始调用工具
-    - tool_end: 工具调用完成
-    - final: 最终响应（包含完整答案和 session_id）
-    - error: 发生错误
+    AG-UI 事件类型：
+    - RUN_STARTED/FINISHED/ERROR: 会话生命周期
+    - THINKING_*: 思考过程（Deepseek Reasoning）
+    - TEXT_MESSAGE_*: 正式回答内容
+    - TOOL_CALL_*: 工具调用过程
 
-    使用示例：
+    前端集成示例（Vue3 + TDesign Chat）：
+    ```vue
+    <template>
+      <t-chatbot :chat-service-config="chatServiceConfig" />
+    </template>
+
+    <script setup>
+    const chatServiceConfig = {
+      endpoint: '/api/v1/chat/stream',
+      protocol: 'agui',  // 启用 AG-UI 协议
+      stream: true,
+    };
+    </script>
+    ```
+
+    或使用原生 EventSource：
     ```javascript
     const eventSource = new EventSource('/api/v1/chat/stream');
     eventSource.onmessage = (event) => {
@@ -178,7 +204,7 @@ async def chat_stream(request: ChatRequest):
 
     或使用 curl 测试：
     ```bash
-    curl -N -X POST http://localhost:8005/api/v1/chat/stream \\
+    curl -N -X POST http://localhost:8000/api/v1/chat/stream \\
       -H "Content-Type: application/json" \\
       -d '{"message": "查询项目状态", "session_id": null}'
     ```

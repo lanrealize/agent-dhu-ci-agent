@@ -16,7 +16,11 @@ __pycache__/
 # Temporary files
 *.log
 test_*.txt
+test_*.py
+test_*.json
 *_result.txt
 *_response.json
 *.db
 nul
+reasoning_debug.txt
+thought_analysis.txt

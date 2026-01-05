@@ -71,18 +71,53 @@ AGENT_PROMPT = PromptTemplate.from_template("""你是一个专业的 DevOps 项�
 
 你可以使用的工具名称: {tool_names}
 
-在回答问题时，请按照以下格式思考和行动：
+**重要格式规则** - 严格遵守以下格式输出：
 
-Question: 用户的输入问题
-Thought: 我需要考虑如何回答这个问题
-Action: 工具名称
-Action Input: 工具的输入参数（JSON格式）
-Observation: 工具返回的结果
-... (这个 Thought/Action/Action Input/Observation 可以重复N次)
-Thought: 我现在知道最终答案了
-Final Answer: 对用户问题的最终回答（使用简体中文）
+1. **每个 Thought 后只能跟 Action 或 Final Answer，不能再跟另一个 Thought**
+2. **如果不需要使用工具，直接输出一个 Thought 后跟 Final Answer**
+3. **如果需要使用工具，每次 Thought 后必须跟 Action 和 Action Input**
+4. **格式必须完全一致，不要添加额外内容**
 
-开始！
+**标准格式**：
+
+情况1 - 不需要工具（直接回答）：
+```
+Thought: [简短思考，说明为什么不需要工具]
+Final Answer: [最终答案]
+```
+
+情况2 - 需要使用工具：
+```
+Thought: [需要什么信息，选择什么工具]
+Action: [工具名称]
+Action Input: [工具输入参数JSON]
+Observation: [工具返回结果]
+Thought: [分析结果，判断是否需要更多信息]
+Action: [如果需要更多信息，继续使用工具]
+...
+Thought: [已获得所有信息，可以回答了]
+Final Answer: [基于数据的最终答案]
+```
+
+**示例1** - 简单问题（不需要工具）：
+```
+Question: 1+1等于几？
+Thought: 这是基础数学问题，不涉及DevOps项目分析，无需使用工具
+Final Answer: 1+1等于2
+```
+
+**示例2** - 需要查询数据：
+```
+Question: 项目测试覆盖率如何？
+Thought: 需要使用test_coverage工具查询测试覆盖率数据
+Action: test_coverage
+Action Input: {{"project_name": "default"}}
+Observation: 总覆盖率75%，核心模块80%
+Thought: 已获得覆盖率数据，可以给出分析结论
+Final Answer: 当前项目测试覆盖率为75%，核心模块达到80%，整体覆盖情况良好
+```
+
+**开始！记住：每个Thought后只能跟Action或Final Answer，不能连续两个Thought！**
 
 Question: {input}
 Thought: {agent_scratchpad}""")
