@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.callbacks import BaseCallbackHandler
 
 from src.agent.devops_agent import DevOpsAgent
-from src.models.schemas import ChatRequest
+from src.models.schemas import ChatRequest, AGUIRunAgentInput
 from src.utils.logger import get_logger
 from src.utils.agui_adapter import AGUIAdapter
 
@@ -168,7 +168,7 @@ async def stream_with_callback(agent: DevOpsAgent, message: str, session_id: str
 
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
-    """流式对话接口（AG-UI 协议）
+    """流式对话接口（AG-UI 协议）- 简化格式
 
     符合 AG-UI 协议标准的流式 SSE 接口，支持 TDesign Chat 组件直接集成。
 
@@ -213,6 +213,77 @@ async def chat_stream(request: ChatRequest):
 
     return StreamingResponse(
         stream_with_callback(agent, request.message, request.session_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@router.post("/agent/run")
+async def agent_run(request: AGUIRunAgentInput):
+    """AG-UI 协议标准端点 (RunAgentInput)
+
+    完全符合 AG-UI 协议标准的接口，接收 RunAgentInput 格式请求。
+
+    请求格式：
+    ```json
+    {
+      "threadId": "thread-123",
+      "runId": "run-456",
+      "messages": [
+        {"role": "user", "content": "你好"},
+        {"role": "assistant", "content": "你好！有什么可以帮你的？"},
+        {"role": "user", "content": "请帮我检查Navigation项目的代码覆盖率"}
+      ],
+      "tools": [...],
+      "state": {...},
+      "context": {...}
+    }
+    ```
+
+    返回：AG-UI 标准事件流 (SSE)
+
+    前端集成示例（TDesign Chat）：
+    ```vue
+    <script setup>
+    const chatServiceConfig = {
+      endpoint: '/api/v1/agent/run',
+      protocol: 'agui',
+      stream: true,
+    };
+    </script>
+    ```
+    """
+    agent = DevOpsAgent()
+
+    # 提取最后一条用户消息
+    user_messages = [msg for msg in request.messages if msg.role == "user"]
+    if not user_messages:
+        # 如果没有用户消息，返回错误
+        async def error_stream():
+            yield f"data: {json.dumps({'type': 'RUN_ERROR', 'error': 'No user message found'}, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            error_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
+        )
+
+    # 获取最后一条用户消息
+    last_user_message = user_messages[-1].content
+
+    # 使用 threadId 作为 session_id
+    session_id = request.threadId or request.runId
+
+    return StreamingResponse(
+        stream_with_callback(agent, last_user_message, session_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

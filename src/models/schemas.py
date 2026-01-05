@@ -12,8 +12,27 @@ from pydantic import BaseModel, Field
 # ========== 对话相关 ==========
 
 
+class Message(BaseModel):
+    """AG-UI 消息格式"""
+    role: str = Field(..., description="消息角色 (user/assistant/system)")
+    content: str = Field(..., description="消息内容")
+
+
+class AGUIRunAgentInput(BaseModel):
+    """AG-UI 协议标准请求格式 (RunAgentInput)
+
+    符合 AG-UI 协议：https://docs.ag-ui.com/sdk/python/core/types#runagentinput
+    """
+    threadId: Optional[str] = Field(None, description="对话线程 ID")
+    runId: Optional[str] = Field(None, description="运行 ID")
+    messages: List[Message] = Field(..., description="消息历史")
+    tools: Optional[List[Dict[str, Any]]] = Field(None, description="可用工具")
+    state: Optional[Dict[str, Any]] = Field(None, description="状态数据")
+    context: Optional[Dict[str, Any]] = Field(None, description="上下文信息")
+
+
 class ChatRequest(BaseModel):
-    """对话请求"""
+    """对话请求（简化格式，向后兼容）"""
 
     message: str = Field(..., description="用户消息", min_length=1)
     session_id: Optional[str] = Field(None, description="会话 ID")

@@ -35,8 +35,8 @@ class DevOpsAgent:
         # 启用流式输出以实现实时响应
         self.llm = ChatOpenAI(
             model=settings.deepseek_model,
-            openai_api_key=settings.deepseek_api_key,
-            openai_api_base=settings.deepseek_base_url,
+            api_key=settings.deepseek_api_key,
+            base_url=settings.deepseek_base_url,
             temperature=0.7,
             max_tokens=2000,
             streaming=True,  # 🔥 关键：启用流式输出
