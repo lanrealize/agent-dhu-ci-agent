@@ -222,7 +222,8 @@ class AGUIAdapter:
             self.line_buffer = ""
 
         # 检查 line_buffer 是否以可能的标记关键词结尾（需要等待下一个 token 确认）
-        marker_prefixes = ["Thought", "Action", "Observation", "Final"]
+        # 🔥 包含双词标记："Final Answer", "Action Input"
+        marker_prefixes = ["Thought", "Action", "Action Input", "Observation", "Final", "Final Answer"]
         buffer_ends_with_prefix = any(
             self.line_buffer.rstrip().endswith(prefix) for prefix in marker_prefixes
         )
