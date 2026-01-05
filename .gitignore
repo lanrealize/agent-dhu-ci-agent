@@ -12,6 +12,7 @@ __pycache__/
 # Environment
 .env
 .env.local
+.env.production  # 生产环境配置（包含敏感信息）
 
 # Temporary files
 *.log
