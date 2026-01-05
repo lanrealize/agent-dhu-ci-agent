@@ -7,6 +7,9 @@
 import uuid
 from typing import Dict, Any, Optional, List
 from enum import Enum
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class AGUIEventType(str, Enum):
@@ -42,16 +45,18 @@ class AGUIAdapter:
     支持流式逐字输出、思考过程展示、工具调用等。
     """
 
-    def __init__(self, session_id: Optional[str] = None):
+    def __init__(self, session_id: Optional[str] = None, debug: bool = False):
         """初始化适配器
 
         Args:
             session_id: 会话 ID，用作 runId
+            debug: 是否启用调试日志
         """
         self.run_id = session_id or str(uuid.uuid4())
         self.message_id = f"msg_{uuid.uuid4().hex[:8]}"
         self.thinking_id = f"thinking_{uuid.uuid4().hex[:8]}"
         self.tool_call_id = f"tool_{uuid.uuid4().hex[:8]}"
+        self.debug = debug
 
         # 状态追踪
         self.run_started = False
@@ -62,6 +67,11 @@ class AGUIAdapter:
 
         # 当前工具调用信息
         self.current_tool: Optional[str] = None
+
+        # Agent ReAct 阶段追踪
+        self.current_stage = None  # None, "thought", "action", "action_input", "observation", "final_answer"
+        self.line_buffer = ""  # 用于检测行标记
+        self.pending_tokens = []  # 等待确认的 token 缓冲
 
     def convert_event(self, event: Dict[str, Any]) -> List[Dict[str, Any]]:
         """转换内部事件为 AG-UI 事件
@@ -150,45 +160,188 @@ class AGUIAdapter:
 
         return events
 
+    def _detect_and_handle_react_markers(self, token: str) -> tuple[List[str], Optional[str]]:
+        """检测 ReAct 格式标记，返回要发送的 tokens 和阶段切换信息
+
+        Args:
+            token: 当前 token
+
+        Returns:
+            (tokens_to_send, stage_info):
+                - tokens_to_send: 要发送的 token 列表（可能包含之前缓存的）
+                - stage_info: 阶段切换信息 ("thought", "final_answer", None)
+        """
+        self.line_buffer += token
+
+        # 🔥 调试日志
+        if self.debug:
+            logger.debug(f"[ReAct] Token: {repr(token)}, Stage: {self.current_stage}, "
+                        f"Buffer: {repr(self.line_buffer[-50:])}, Pending: {len(self.pending_tokens)}")
+
+        # 限制缓冲区大小
+        if len(self.line_buffer) > 100:
+            self.line_buffer = self.line_buffer[-100:]
+
+        # 检测标记（按照长度降序，优先匹配长标记）
+        markers = {
+            "Action Input:": "action_input",
+            "Final Answer:": "final_answer",
+            "Observation:": "observation",
+            "Thought:": "thought",
+            "Action:": "action",
+        }
+
+        # 检查是否匹配到完整标记
+        for marker, stage in markers.items():
+            if marker in self.line_buffer:
+                # 找到标记，清空 pending_tokens（不发送）
+                if self.debug:
+                    logger.debug(f"[ReAct] 🎯 Detected marker: {marker} -> {stage}, "
+                                f"Discarding {len(self.pending_tokens)} pending tokens")
+                self.pending_tokens.clear()
+
+                # 从缓冲区中移除标记及之前的内容
+                marker_pos = self.line_buffer.find(marker)
+                self.line_buffer = self.line_buffer[marker_pos + len(marker):]
+
+                # 切换阶段
+                old_stage = self.current_stage
+                self.current_stage = stage
+                if self.debug:
+                    logger.debug(f"[ReAct] Stage transition: {old_stage} -> {stage}")
+
+                # 只有 Thought 和 Final Answer 需要通知上层开启新消息
+                if stage in ["thought", "final_answer"]:
+                    return ([], stage)
+                else:
+                    # Action/Observation 不开启消息，直接返回
+                    return ([], None)
+
+        # 检测换行符
+        if '\n' in token or '\r' in token:
+            self.line_buffer = ""
+
+        # 检查 line_buffer 是否以可能的标记关键词结尾（需要等待下一个 token 确认）
+        marker_prefixes = ["Thought", "Action", "Observation", "Final"]
+        buffer_ends_with_prefix = any(
+            self.line_buffer.rstrip().endswith(prefix) for prefix in marker_prefixes
+        )
+
+        if buffer_ends_with_prefix:
+            # 可能是标记的开始，缓存当前 token，等待确认
+            if self.debug:
+                logger.debug(f"[ReAct] ⏸️ Buffering token (possible marker prefix)")
+            self.pending_tokens.append(token)
+            return ([], None)
+
+        # 没有检测到标记前缀，发送之前缓存的 tokens + 当前 token
+        tokens_to_send = []
+        if len(self.pending_tokens) > 0:
+            tokens_to_send.extend(self.pending_tokens)
+            if self.debug:
+                logger.debug(f"[ReAct] ✅ Releasing {len(self.pending_tokens)} pending tokens")
+            self.pending_tokens.clear()
+        tokens_to_send.append(token)
+
+        # 根据当前阶段决定是否发送
+        if self.current_stage in ["thought", "final_answer"]:
+            # Thought 或 Final Answer 内容，发送
+            if self.debug and len(tokens_to_send) > 0:
+                logger.debug(f"[ReAct] 📤 Sending {len(tokens_to_send)} tokens in stage {self.current_stage}")
+            return (tokens_to_send, None)
+        elif self.current_stage in ["action", "action_input", "observation"]:
+            # Action/Observation 内容，不发送
+            if self.debug:
+                logger.debug(f"[ReAct] 🚫 Discarding token in stage {self.current_stage}")
+            return ([], None)
+        else:
+            # 初始阶段（第一个 Thought 之前），不发送
+            if self.debug:
+                logger.debug(f"[ReAct] 🚫 Discarding token (before first Thought)")
+            return ([], None)
+
     def _handle_answer_token(self, event: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """处理正式回答 token
+        """处理正式回答 token（来自 content 流，包含 ReAct 格式）
 
         返回 TEXT_MESSAGE_* 系列事件
         """
         events = []
         content = event.get("content", "")
 
-        # 如果之前有 thinking，先结束它
-        if self.thinking_started:
-            if self.thinking_text_started:
+        # 🔥 检测 ReAct 标记和阶段切换
+        tokens_to_send, stage_info = self._detect_and_handle_react_markers(content)
+
+        # 如果检测到新的 Thought 或 Final Answer 阶段
+        if stage_info in ["thought", "final_answer"]:
+            # 先结束之前的 THINKING（如果有）
+            if self.thinking_started:
+                if self.thinking_text_started:
+                    events.append({
+                        "type": AGUIEventType.THINKING_TEXT_MESSAGE_END,
+                        "thinkingId": self.thinking_id
+                    })
+                    self.thinking_text_started = False
                 events.append({
-                    "type": AGUIEventType.THINKING_TEXT_MESSAGE_END,
+                    "type": AGUIEventType.THINKING_END,
                     "thinkingId": self.thinking_id
                 })
-                self.thinking_text_started = False
+                self.thinking_started = False
 
-            events.append({
-                "type": AGUIEventType.THINKING_END,
-                "thinkingId": self.thinking_id
-            })
-            self.thinking_started = False
+            # 结束上一个 MESSAGE（如果有）
+            if self.message_started:
+                events.append({
+                    "type": AGUIEventType.TEXT_MESSAGE_END,
+                    "messageId": self.message_id
+                })
+                self.message_started = False
 
-        # 第一次回答 token，发送 MESSAGE_START
-        if not self.message_started:
-            self.message_started = True
+            # 生成新的 MESSAGE ID
+            self.message_id = f"msg_{uuid.uuid4().hex[:8]}"
+
+            # 开启新的 MESSAGE
             events.append({
                 "type": AGUIEventType.TEXT_MESSAGE_START,
                 "messageId": self.message_id,
                 "role": "assistant"
             })
+            self.message_started = True
 
-        # 发送回答内容（delta 逐字传输）
-        if content:
-            events.append({
-                "type": AGUIEventType.TEXT_MESSAGE_CONTENT,
-                "messageId": self.message_id,
-                "delta": content
-            })
+            return events
+
+        # 如果有需要发送的内容
+        if len(tokens_to_send) > 0:
+            # 确保消息已经开启（如果还没开启，开启一个）
+            if not self.message_started:
+                # 先结束 THINKING（如果有）
+                if self.thinking_started:
+                    if self.thinking_text_started:
+                        events.append({
+                            "type": AGUIEventType.THINKING_TEXT_MESSAGE_END,
+                            "thinkingId": self.thinking_id
+                        })
+                        self.thinking_text_started = False
+                    events.append({
+                        "type": AGUIEventType.THINKING_END,
+                        "thinkingId": self.thinking_id
+                    })
+                    self.thinking_started = False
+
+                # 开启新消息
+                self.message_id = f"msg_{uuid.uuid4().hex[:8]}"
+                events.append({
+                    "type": AGUIEventType.TEXT_MESSAGE_START,
+                    "messageId": self.message_id,
+                    "role": "assistant"
+                })
+                self.message_started = True
+
+            # 发送所有 tokens
+            for token in tokens_to_send:
+                events.append({
+                    "type": AGUIEventType.TEXT_MESSAGE_CONTENT,
+                    "messageId": self.message_id,
+                    "delta": token
+                })
 
         return events
 
@@ -220,8 +373,13 @@ class AGUIAdapter:
             })
             self.thinking_started = False
 
-        # 如果消息已开始，先暂停（稍后在 tool_end 后继续）
-        # 注意：不发送 MESSAGE_END，因为工具调用后还会继续回答
+        # 🔥 如果消息已开始，先关闭它（工具调用表示当前思考已结束）
+        if self.message_started:
+            events.append({
+                "type": AGUIEventType.TEXT_MESSAGE_END,
+                "messageId": self.message_id
+            })
+            self.message_started = False
 
         # 生成新的 tool_call_id
         self.tool_call_id = f"tool_{uuid.uuid4().hex[:8]}"

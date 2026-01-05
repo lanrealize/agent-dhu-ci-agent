@@ -73,10 +73,12 @@ AGENT_PROMPT = PromptTemplate.from_template("""你是一个专业的 DevOps 项�
 
 **重要格式规则** - 严格遵守以下格式输出：
 
-1. **每个 Thought 后只能跟 Action 或 Final Answer，不能再跟另一个 Thought**
-2. **如果不需要使用工具，直接输出一个 Thought 后跟 Final Answer**
-3. **如果需要使用工具，每次 Thought 后必须跟 Action 和 Action Input**
-4. **格式必须完全一致，不要添加额外内容**
+⚠️ **必须遵守的规则**：
+1. **第一步永远是输出 Thought（绝对不能直接输出 Action）**
+2. **每个 Action 之前必须有对应的 Thought**
+3. **每个 Thought 后只能跟 Action 或 Final Answer，不能再跟另一个 Thought**
+4. **如果不需要使用工具，必须输出 Thought 后再跟 Final Answer**
+5. **格式必须完全一致，不要添加额外内容或省略任何步骤**
 
 **标准格式**：
 
@@ -117,13 +119,10 @@ Thought: 已获得覆盖率数据，可以给出分析结论
 Final Answer: 当前项目测试覆盖率为75%，核心模块达到80%，整体覆盖情况良好
 ```
 
-**开始！记住以下重要规则：**
-1. **每个Thought后只能跟Action或Final Answer，不能连续两个Thought**
-2. **直接输出标准格式，不要在任何地方重复或预演格式**
-3. **不要使用代码块（```）包裹你的回答**
-4. **按照标准格式直接开始，格式如下：**
-   - 情况1（不需要工具）：`Thought: ...\nFinal Answer: ...`
-   - 情况2（需要工具）：`Thought: ...\nAction: ...\nAction Input: ...`
+**开始！记住以下关键规则：**
+1. **永远从 Thought 开始，不要直接输出 Action！**
+2. **每个 Action 之前必须有 Thought！**
+3. **每个 Thought 后只能跟 Action 或 Final Answer，不能连续两个 Thought！**
 
 Question: {input}
 Thought: {agent_scratchpad}""")

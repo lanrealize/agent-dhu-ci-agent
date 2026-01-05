@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import AsyncGenerator, Any, Dict, List
 import asyncio
 import json
-import re
 from queue import Queue
 
 from fastapi import APIRouter
@@ -18,29 +17,6 @@ from src.utils.agui_adapter import AGUIAdapter
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["对话"])
-
-
-def clean_model_output(text: str) -> str:
-    """清理模型输出中的特殊标签
-
-    移除 XML 标签（<think>, </think>）和其他可能影响 UI 显示的标记
-
-    Args:
-        text: 原始文本
-
-    Returns:
-        清理后的文本
-    """
-    if not text:
-        return text
-
-    # 移除 <think> 和 </think> 标签
-    text = re.sub(r'</?think>', '', text, flags=re.IGNORECASE)
-
-    # 移除其他常见的 XML 标签（如果需要）
-    # text = re.sub(r'<[^>]+>', '', text)
-
-    return text
 
 
 class StreamingCallbackHandler(BaseCallbackHandler):
@@ -75,26 +51,27 @@ class StreamingCallbackHandler(BaseCallbackHandler):
                 if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs:
                     reasoning = msg.additional_kwargs.get('reasoning_content')
                     if reasoning:
-                        # 🔥 清理 reasoning content 中的 XML 标签
-                        cleaned_reasoning = clean_model_output(reasoning)
                         # 发送 reasoning token 事件
                         self.queue.put({
                             "type": "reasoning_token",
-                            "content": cleaned_reasoning
+                            "content": reasoning
                         })
                         return  # reasoning token 不需要再发送普通 token
 
-        # 🔥 清理普通 token 中的 XML 标签
-        cleaned_token = clean_model_output(token)
         # 发送普通 content token
         self.queue.put({
             "type": "token",
-            "content": cleaned_token
+            "content": token
         })
 
     def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs: Any) -> None:
         """工具调用开始"""
         tool_name = serialized.get("name", "unknown")
+
+        # 🔥 过滤 LangChain 内部错误处理工具（_Exception）
+        if tool_name == "_Exception":
+            return  # 不发送到队列
+
         self.queue.put({
             "type": "tool_start",
             "tool": tool_name,
@@ -103,6 +80,10 @@ class StreamingCallbackHandler(BaseCallbackHandler):
 
     def on_tool_end(self, output: str, **kwargs: Any) -> None:
         """工具调用结束"""
+        # 🔥 检查是否是内部错误消息（格式错误）
+        if "Invalid Format:" in output or "Parsing LLM output produced" in output:
+            return  # 不发送到队列
+
         self.queue.put({
             "type": "tool_end",
             "output": output[:200]
@@ -130,8 +111,8 @@ async def stream_with_callback(agent: DevOpsAgent, message: str, session_id: str
     queue = Queue()
 
     try:
-        # 创建 AG-UI 适配器
-        adapter = AGUIAdapter(session_id=session_id)
+        # 创建 AG-UI 适配器（🔥 启用调试模式）
+        adapter = AGUIAdapter(session_id=session_id, debug=True)
 
         # 发送会话开始事件
         start_events = adapter.convert_event({"type": "start", "session_id": session_id or "new"})
