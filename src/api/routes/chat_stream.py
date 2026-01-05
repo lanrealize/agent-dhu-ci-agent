@@ -257,12 +257,23 @@ async def agent_run(request: AGUIRunAgentInput):
     </script>
     ```
     """
+    # 🔥 打印成功解析的请求数据
+    logger.info("=" * 80)
+    logger.info("✅ /agent/run 请求解析成功")
+    logger.info(f"  threadId: {request.threadId}")
+    logger.info(f"  runId: {request.runId}")
+    logger.info(f"  messages 数量: {len(request.messages)}")
+    for i, msg in enumerate(request.messages):
+        logger.info(f"    [{i}] role={msg.role}, content={msg.content[:50]}...")
+    logger.info("=" * 80)
+
     agent = DevOpsAgent()
 
     # 提取最后一条用户消息
     user_messages = [msg for msg in request.messages if msg.role == "user"]
     if not user_messages:
         # 如果没有用户消息，返回错误
+        logger.warning("请求中没有用户消息")
         async def error_stream():
             yield f"data: {json.dumps({'type': 'RUN_ERROR', 'error': 'No user message found'}, ensure_ascii=False)}\n\n"
 
@@ -278,6 +289,7 @@ async def agent_run(request: AGUIRunAgentInput):
 
     # 获取最后一条用户消息
     last_user_message = user_messages[-1].content
+    logger.info(f"提取的用户消息: {last_user_message}")
 
     # 使用 threadId 作为 session_id
     session_id = request.threadId or request.runId

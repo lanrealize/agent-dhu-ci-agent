@@ -1,7 +1,9 @@
 """FastAPI 应用主文件"""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from src.api.routes import analysis, chat, chat_stream, health
 from src.config import settings
@@ -34,6 +36,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# 🔥 添加 422 验证错误处理器，打印详细的请求信息
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """处理请求验证错误，打印详细的请求信息"""
+    try:
+        body = await request.body()
+        logger.error("=" * 80)
+        logger.error(f"❌ 422 验证错误 - {request.method} {request.url.path}")
+        logger.error(f"Content-Type: {request.headers.get('content-type')}")
+        logger.error(f"原始请求体: {body.decode('utf-8')}")
+        logger.error("-" * 80)
+        logger.error(f"验证错误详情:")
+        for error in exc.errors():
+            logger.error(f"  - 字段: {error.get('loc')}")
+            logger.error(f"    错误: {error.get('msg')}")
+            logger.error(f"    类型: {error.get('type')}")
+        logger.error("=" * 80)
+    except Exception as e:
+        logger.error(f"打印验证错误日志时出错: {str(e)}")
+
+    # 返回标准的 422 错误响应
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors()},
+    )
+
 
 # 注册路由
 app.include_router(health.router, prefix="/api/v1")
